@@ -1,0 +1,559 @@
+---
+title: "First_Generation_KLIPS"
+output: html_document
+editor_options: 
+  chunk_output_type: console
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+## Data Cleaning
+
+1. Get data required: 
+1) To Exract First Generation College Students during 20 years 
+: Search every parent-child relationships that are available with: Education & wage information
+
+```{r}
+
+library(prob)
+library(foreign)
+
+if.1st.gen <- function(fat.edu, fat.status, mot.edu, mot.status, self.edu, self.status){
+  #Criteria: "Attend" to college
+  x <- (fat.edu < 7) & (mot.edu < 7) & (self.edu >=7)
+  # even though "self" has dropped the college out, she is counted as first generation college student
+  return(x)
+}
+
+return.colnum <- function(agent, datah, year){
+  if (is.vector(agent)){
+    agent.var <- paste0("h", year, "0", agent[2]+220)
+    call.agent <- which(names(datah) == agent.var)
+  } else {
+    agent.var <- paste0("h", year, "0", agent[,2]+220)
+    call.agent <- NA
+    for (i in c(1:length(agent.var))){
+      call.agent <- append(call.agent, which(names(datah) == agent.var[i]))
+    }
+    call.agent <- call.agent[-1]
+  }
+  
+  return(call.agent)
+}
+
+print.target <- function(datap, datah, year, fat.code, mot.code, self.code){
+  
+  year <- sprintf("%02d", year)
+  reply.var <- paste0("hwave",year)
+  call.reply <- which(names(datah) == reply.var)
+  datah <- datah[datah[,call.reply]==1,]
+  
+  relat.var <- paste0("h",year,"0261")
+  call.relat <- which(names(datah) == relat.var)
+  
+  selfs <- which(datah[,call.relat:(call.relat+14)] == self.code, arr.ind = TRUE)
+  fathers <- which(datah[,call.relat:(call.relat+14)] == fat.code, arr.ind = TRUE)
+  mothers <- which(datah[,call.relat:(call.relat+14)] == mot.code, arr.ind = TRUE)
+  
+  selfs[,2] <- return.colnum(selfs, datah, year)
+  fathers[,2] <- return.colnum(fathers, datah, year)
+  mothers[,2] <- return.colnum(mothers, datah, year)
+  
+  target <- intersect(intersect(selfs[,1], fathers[,1]), mothers[,1]) 
+  #the cases both father and mother exists in the datapool
+  
+  if (is.vector(selfs)){} else {
+    selfs <- selfs[selfs[,1] %in% target,]}
+  if (is.vector(fathers)){} else {
+    fathers <- fathers[fathers[,1] %in% target,]}
+  if (is.vector(mothers)){} else {
+    mothers <- mothers[mothers[,1] %in% target,]}
+  
+  if (is.vector(selfs)){
+    self.id <- datah[selfs[1], selfs[2]]
+  } else {
+    selfs <- selfs[order(selfs[,1]),]
+    self.id <- datah[selfs]}
+  if (is.vector(fathers)){
+    fat.id <- datah[fathers[1], fathers[2]]
+  } else {
+    fathers <- fathers[order(fathers[,1]),]
+    fat.id <- datah[fathers] 
+    }
+  if (is.vector(mothers)){
+    mot.id <- datah[mothers[1], mothers[2]]
+  } else {
+    mothers <- mothers[order(mothers[,1]),]
+    mot.id <- datah[mothers]
+    }
+  
+  # When the householder who was originally sample of 98 investigation 
+  # is reported as a new family member in sample of 09 : 
+  # self ID follows original family code
+  # his parents follows new family code
+  
+  edu.var <- paste0("p",year,"0110")
+  stat.var <- paste0("p",year,"0111")
+  
+  call.edu <- which(names(datap) == edu.var)
+  call.status <- which(names(datap) == stat.var)
+  
+  fat.h.id <- datap[datap$pid %in% fat.id, 2]
+  fat.edu <- datap[datap$pid %in% fat.id, call.edu]
+  fat.status <- datap[datap$pid %in% fat.id, call.status]
+  mot.h.id <- datap[datap$pid %in% mot.id, 2]
+  mot.edu <- datap[datap$pid %in% mot.id, call.edu]
+  mot.status <- datap[datap$pid %in% mot.id, call.status]
+  self.h.id <- datap[datap$pid %in% self.id, 2]
+  self.s.id <- datap[datap$pid %in% self.id, 1]
+  self.edu <- datap[datap$pid %in% self.id, call.edu]
+  self.status <- datap[datap$pid %in% self.id, call.status]
+  
+  fathers2 <- data.frame(id=fat.h.id, edu=fat.edu, status=fat.status)
+  mothers2 <- data.frame(id=mot.h.id, edu=mot.edu, status=mot.status)
+  selfs2 <- data.frame(id=self.h.id, edu=self.edu, status=self.status, pid=self.s.id)
+  target2 <- intersect(intersect(selfs2[,1], fathers2[,1]), mothers2[,1])
+  
+  selfs2 <- selfs2[selfs2[,1] %in% target2,]
+  fathers2 <- fathers2[fathers2[,1] %in% target2,]
+  mothers2 <- mothers2[mothers2[,1] %in% target2,]
+  selfs2 <- selfs2[order(selfs2[,1]),]
+  fathers2 <- fathers2[order(fathers2[,1]),]
+  mothers2 <- mothers2[order(mothers2[,1]),]
+
+  if.target <- if.1st.gen(fathers2$edu, fathers2$status, mothers2$edu, mothers2$status, selfs2$edu, selfs2$status)
+  target.id <- selfs2$pid[if.target]
+  return(target.id)  
+}
+
+return.target <- function(datap, datah, year){
+  
+  first.gen <- NA
+  
+  first.gen <- append(first.gen, print.target(datap, datah, year, 5,6,10))
+  first.gen <- append(first.gen, print.target(datap, datah, year, 7,8,20))
+  first.gen <- append(first.gen, print.target(datap, datah, year, 10,20,11))
+  first.gen <- append(first.gen, print.target(datap, datah, year, 10,20,12))
+  first.gen <- append(first.gen, print.target(datap, datah, year, 10,20,13))
+  first.gen <- append(first.gen, print.target(datap, datah, year, 10,20,14))
+  first.gen <- append(first.gen, print.target(datap, datah, year, 10,20,15))
+  first.gen <- append(first.gen, print.target(datap, datah, year, 10,20,16))
+  first.gen <- append(first.gen, print.target(datap, datah, year, 10,20,17))
+  first.gen <- append(first.gen, print.target(datap, datah, year, 11,21,111))
+  first.gen <- append(first.gen, print.target(datap, datah, year, 11,21,112))
+  first.gen <- append(first.gen, print.target(datap, datah, year, 11,21,113))
+  first.gen <- append(first.gen, print.target(datap, datah, year, 11,21,114))
+  first.gen <- append(first.gen, print.target(datap, datah, year, 11,21,115))
+  first.gen <- append(first.gen, print.target(datap, datah, year, 12,22,121))
+  first.gen <- append(first.gen, print.target(datap, datah, year, 12,22,122))
+  first.gen <- append(first.gen, print.target(datap, datah, year, 12,22,123))
+  first.gen <- append(first.gen, print.target(datap, datah, year, 13,23,131))
+  first.gen <- append(first.gen, print.target(datap, datah, year, 13,23,132))
+  first.gen <- append(first.gen, print.target(datap, datah, year, 14,24,141))
+  first.gen <- append(first.gen, print.target(datap, datah, year, 14,24,142))
+  first.gen <- append(first.gen, print.target(datap, datah, year, 14,24,143))
+  first.gen <- append(first.gen, print.target(datap, datah, year, 15,25,151))
+  first.gen <- append(first.gen, print.target(datap, datah, year, 15,25,152))
+  first.gen <- append(first.gen, print.target(datap, datah, year, 16,26,161))
+  first.gen <- append(first.gen, print.target(datap, datah, year, 31,51,311))
+  first.gen <- append(first.gen, print.target(datap, datah, year, 31,51,312))
+  first.gen <- append(first.gen, print.target(datap, datah, year, 31,51,313))
+  first.gen <- append(first.gen, print.target(datap, datah, year, 111,211,1111))
+  first.gen <- append(first.gen, print.target(datap, datah, year, 111,211,1112))
+  
+  first.gen <- first.gen[-1]
+  
+  return(first.gen)
+}
+
+for (year in 1:20){
+  varname <- paste0("first.gen.",year)
+  datap <- read.spss(paste0("/Users/jisulee/Documents/Master's thesis/KLIPS/klips",sprintf("%02d", year),"p.sav"), to.data.frame=TRUE)
+  datah <- read.spss(paste0("/Users/jisulee/Documents/Master's thesis/KLIPS/klips",sprintf("%02d", year),"h.sav"), to.data.frame=TRUE)
+  
+  a <- return.target(datap, datah, year)
+  assign(varname, a)
+}
+
+first.gen <- c(first.gen.1, first.gen.2, first.gen.3, first.gen.4, first.gen.5, 
+               first.gen.6, first.gen.7, first.gen.8, first.gen.9, first.gen.10, 
+               first.gen.11, first.gen.12, first.gen.13, first.gen.14, first.gen.15, 
+               first.gen.16, first.gen.17, first.gen.18, first.gen.19, first.gen.20)
+first.gen <- unique(first.gen)
+first.gen <- data.frame(first.gen, NA)
+
+
+for (year in 1:20){
+  varname <- paste0("first.gen.",year)
+  assigned <- (first.gen[,1] %in% get(varname))
+  first.gen[,2][assigned] <- year
+  
+  #1   2   3   4   5   6   7   8   9  10  11  12  13  14  15  16  17  18  19  20 
+  #106  96  94  88  82  91  85  75  94 129  86 128  87  77  74 105  72  88  97 584 
+  # To Assign the pids for the latest datasets
+}
+
+
+
+
+```
+
+1. Get data required: 
+2) Second Generation College Students during 20 years 
+
+```{r pressure, echo=FALSE}
+
+if.2nd.gen <- function(par.edu, par.status, self.edu, self.status){
+  #Criteria: "Attend" to college
+  x <- (par.edu >= 7) & (self.edu >=7)
+  return(x)
+}
+
+print.2nd <- function(datap, datah, year, par.code, self.code){
+  
+  year <- sprintf("%02d", year)
+  reply.var <- paste0("hwave",year)
+  call.reply <- which(names(datah) == reply.var)
+  datah <- datah[datah[,call.reply]==1,]
+  
+  relat.var <- paste0("h",year,"0261")
+  call.relat <- which(names(datah) == relat.var)
+  
+  selfs <- which(datah[,call.relat:(call.relat+14)] == self.code, arr.ind = TRUE)
+  parents <- which(datah[,call.relat:(call.relat+14)] == par.code, arr.ind = TRUE)
+
+  selfs[,2] <- return.colnum(selfs, datah, year)
+  parents[,2] <- return.colnum(parents, datah, year)
+
+  target <- intersect(selfs[,1], parents[,1])  ####mom or par may not exist
+  #the cases both parher and mother exists in the datapool
+  
+  if (is.vector(selfs)){} else {
+    selfs <- selfs[selfs[,1] %in% target,]}
+  if (is.vector(parents)){} else {
+    parents <- parents[parents[,1] %in% target,]}
+
+  if (is.vector(selfs)){
+    self.id <- datah[selfs[1], selfs[2]]
+  } else {
+    selfs <- selfs[order(selfs[,1]),]
+    self.id <- datah[selfs]}
+  if (is.vector(parents)){
+    par.id <- datah[parents[1], parents[2]]
+  } else {
+    parents <- parents[order(parents[,1]),]
+    par.id <- datah[parents] 
+  }
+  edu.var <- paste0("p",year,"0110")
+  stat.var <- paste0("p",year,"0111")
+  
+  call.edu <- which(names(datap) == edu.var)
+  call.status <- which(names(datap) == stat.var)
+  
+  par.h.id <- datap[datap$pid %in% par.id, 2]
+  par.edu <- datap[datap$pid %in% par.id, call.edu]
+  par.status <- datap[datap$pid %in% par.id, call.status]
+  self.h.id <- datap[datap$pid %in% self.id, 2]
+  self.s.id <- datap[datap$pid %in% self.id, 1]
+  self.edu <- datap[datap$pid %in% self.id, call.edu]
+  self.status <- datap[datap$pid %in% self.id, call.status]
+  
+  parents2 <- data.frame(id=par.h.id, edu=par.edu, status=par.status)
+  selfs2 <- data.frame(id=self.h.id, edu=self.edu, status=self.status, pid=self.s.id)
+  target2 <- intersect(selfs2[,1], parents2[,1])
+  
+  selfs2 <- selfs2[selfs2[,1] %in% target2,]
+  parents2 <- parents2[parents2[,1] %in% target2,]
+  selfs2 <- selfs2[order(selfs2[,1]),]
+  parents2 <- parents2[order(parents2[,1]),]
+
+  if.target <- if.2nd.gen(parents2$edu, parents2$status, selfs2$edu, selfs2$status)
+  target.id <- selfs2$pid[if.target]
+  return(target.id)  
+}
+
+return.2nd <- function(datap, datah, year){
+  
+  second.gen <- NA
+  
+  second.gen <- append(second.gen, print.2nd(datap, datah, year, 5,10))
+  second.gen <- append(second.gen, print.2nd(datap, datah, year, 6,10))
+  second.gen <- append(second.gen, print.2nd(datap, datah, year, 7,20))
+  second.gen <- append(second.gen, print.2nd(datap, datah, year, 8,20))
+  second.gen <- append(second.gen, print.2nd(datap, datah, year, 10,11))
+  second.gen <- append(second.gen, print.2nd(datap, datah, year, 20,11))
+  second.gen <- append(second.gen, print.2nd(datap, datah, year, 10,12))
+  second.gen <- append(second.gen, print.2nd(datap, datah, year, 10,13))
+  second.gen <- append(second.gen, print.2nd(datap, datah, year, 10,14))
+  second.gen <- append(second.gen, print.2nd(datap, datah, year, 10,15))
+  second.gen <- append(second.gen, print.2nd(datap, datah, year, 10,16))
+  second.gen <- append(second.gen, print.2nd(datap, datah, year, 10,17))
+  second.gen <- append(second.gen, print.2nd(datap, datah, year, 20,12))
+  second.gen <- append(second.gen, print.2nd(datap, datah, year, 20,13))
+  second.gen <- append(second.gen, print.2nd(datap, datah, year, 20,14))
+  second.gen <- append(second.gen, print.2nd(datap, datah, year, 20,15))
+  second.gen <- append(second.gen, print.2nd(datap, datah, year, 20,16))
+  second.gen <- append(second.gen, print.2nd(datap, datah, year, 20,17))
+  second.gen <- append(second.gen, print.2nd(datap, datah, year, 11,111))
+  second.gen <- append(second.gen, print.2nd(datap, datah, year, 11,112))
+  second.gen <- append(second.gen, print.2nd(datap, datah, year, 11,113))
+  second.gen <- append(second.gen, print.2nd(datap, datah, year, 11,114))
+  second.gen <- append(second.gen, print.2nd(datap, datah, year, 11,115))
+  second.gen <- append(second.gen, print.2nd(datap, datah, year, 12,121))
+  second.gen <- append(second.gen, print.2nd(datap, datah, year, 12,122))
+  second.gen <- append(second.gen, print.2nd(datap, datah, year, 12,123))
+  second.gen <- append(second.gen, print.2nd(datap, datah, year, 13,131))
+  second.gen <- append(second.gen, print.2nd(datap, datah, year, 13,132))
+  second.gen <- append(second.gen, print.2nd(datap, datah, year, 14,141))
+  second.gen <- append(second.gen, print.2nd(datap, datah, year, 14,142))
+  second.gen <- append(second.gen, print.2nd(datap, datah, year, 14,143))
+  second.gen <- append(second.gen, print.2nd(datap, datah, year, 15,151))
+  second.gen <- append(second.gen, print.2nd(datap, datah, year, 15,152))
+  second.gen <- append(second.gen, print.2nd(datap, datah, year, 16,161))
+  second.gen <- append(second.gen, print.2nd(datap, datah, year, 31,311))
+  second.gen <- append(second.gen, print.2nd(datap, datah, year, 31,312))
+  second.gen <- append(second.gen, print.2nd(datap, datah, year, 31,313))
+  second.gen <- append(second.gen, print.2nd(datap, datah, year, 21,111))
+  second.gen <- append(second.gen, print.2nd(datap, datah, year, 21,112))
+  second.gen <- append(second.gen, print.2nd(datap, datah, year, 21,113))
+  second.gen <- append(second.gen, print.2nd(datap, datah, year, 21,114))
+  second.gen <- append(second.gen, print.2nd(datap, datah, year, 21,115))
+  second.gen <- append(second.gen, print.2nd(datap, datah, year, 22,121))
+  second.gen <- append(second.gen, print.2nd(datap, datah, year, 22,122))
+  second.gen <- append(second.gen, print.2nd(datap, datah, year, 22,123))
+  second.gen <- append(second.gen, print.2nd(datap, datah, year, 23,131))
+  second.gen <- append(second.gen, print.2nd(datap, datah, year, 23,132))
+  second.gen <- append(second.gen, print.2nd(datap, datah, year, 24,141))
+  second.gen <- append(second.gen, print.2nd(datap, datah, year, 24,142))
+  second.gen <- append(second.gen, print.2nd(datap, datah, year, 24,143))
+  second.gen <- append(second.gen, print.2nd(datap, datah, year, 25,151))
+  second.gen <- append(second.gen, print.2nd(datap, datah, year, 25,152))
+  second.gen <- append(second.gen, print.2nd(datap, datah, year, 26,161))
+  second.gen <- append(second.gen, print.2nd(datap, datah, year, 51,311))
+  second.gen <- append(second.gen, print.2nd(datap, datah, year, 51,312))
+  second.gen <- append(second.gen, print.2nd(datap, datah, year, 51,313))
+  second.gen <- append(second.gen, print.2nd(datap, datah, year, 111,1111))
+  second.gen <- append(second.gen, print.2nd(datap, datah, year, 111,1112))
+  second.gen <- append(second.gen, print.2nd(datap, datah, year, 211,1111))
+  second.gen <- append(second.gen, print.2nd(datap, datah, year, 211,1112))
+  
+  second.gen <- second.gen[-1]
+  
+  return(second.gen)
+}
+
+for (year in 01:20){
+  varname <- paste0("second.gen.", year)
+  datap <- read.spss(paste0("/Users/jisulee/Documents/Master's thesis/KLIPS/klips",sprintf("%02d", year),"p.sav"), to.data.frame=TRUE)
+  datah <- read.spss(paste0("/Users/jisulee/Documents/Master's thesis/KLIPS/klips",sprintf("%02d", year),"h.sav"), to.data.frame=TRUE)
+  
+  a <- return.2nd(datap, datah, year)
+  assign(varname, a)
+}
+
+second.gen <- c(second.gen.1, second.gen.2, second.gen.3, second.gen.4, second.gen.5, 
+                second.gen.6, second.gen.7, second.gen.8, second.gen.9, second.gen.10, 
+                second.gen.11, second.gen.12, second.gen.13, second.gen.14, second.gen.15, 
+                second.gen.16, second.gen.17, second.gen.18, second.gen.19, second.gen.20)
+second.gen <- unique(second.gen)
+second.gen <- data.frame(second.gen, NA)
+
+for (year in 1:20){
+  varname <- paste0("second.gen.",year)
+  
+  assigned <- (second.gen[,1] %in% get(varname))
+  second.gen[,2][assigned] <- year
+  
+  #table(second.gen[,2])
+  #  1   2   3   4   5   6   7   8   9  10  11  12  13  14  15  16  17  18  19  20 
+  #56  27  26  28  17  39  48  31  35  40  40  40  37  39  48  29  25  61  49 318 10  11  12  13  14  15  16  17  18  19  20 
+  # To Assign the pids for the latest datasets
+}
+
+```
+
+
+1. Get data required: 
+Get the columns related to wage or being the first-generation
+
+```{r}
+
+cont.var <- function(datap, year){
+  year <- sprintf("%02d", year)
+  cols <- NA
+  
+  cols <- append(cols, which(names(datap) == "pid"))
+  #sex
+  sex.var <- paste0("p",year,"0101") 
+  cols <- append(cols, which(names(datap) == sex.var))
+  
+  #age 
+  age.var <- paste0("p",year,"0107") 
+  cols <- append(cols, which(names(datap) == age.var))
+  
+  #birthyear
+  birth.var <- paste0("p",year,"0104") 
+  cols <- append(cols, which(names(datap) == birth.var))
+
+  #edu
+  edu.var <- paste0("p",year,"0110") 
+  cols <- append(cols, which(names(datap) == edu.var))
+  #(7) 4 year
+  #(8) master
+  #(9) phd
+  
+  #status
+  status.var <- paste0("p",year,"0111") 
+  cols <- append(cols, which(names(datap) == status.var))
+  #(1) graduate
+  #(2) completion
+  #(3) dropped out
+  #(4) in school
+  #(5) taking off
+  
+  #Years of education ends
+  eduyear.var <- paste0("p",year,"0114") 
+  cols <- append(cols, which(names(datap) == eduyear.var))
+  # the period the education ends
+  #Mincer equation: number of years of education has to be calculated
+  
+  # 
+  wagem.var <- paste0("p",year,"1642") # monthly wage of salary worker
+  cols <- append(cols, which(names(datap) == wagem.var))
+  
+  wagey.var <- paste0("p",year,"1672") # monthly wage of self-employed worker
+  cols <- append(cols, which(names(datap) == wagey.var))
+  
+  wage.bt.var <- paste0("p",year,"1702") # total pre-tax annual income 
+  cols <- append(cols, which(names(datap) == wage.bt.var))
+  
+  wage.at.var <- paste0("p",year,"1703") # total post-tax annual income
+  cols <- append(cols, which(names(datap) == wage.at.var))
+ 
+  # the time work started
+  # year
+  worky.var <- paste0("p",year,"0301")
+  cols <- append(cols, which(names(datap) == worky.var))
+  
+  # month
+  workm.var <- paste0("p",year,"0302")
+  cols <- append(cols, which(names(datap) == workm.var))
+  
+  # date
+  workd.var <- paste0("p",year,"0303")
+  cols <- append(cols, which(names(datap) == workd.var))
+
+  # regular worker (1: regular 2:temporary)
+  reg.var <- paste0("p",year,"0317")
+  cols <- append(cols, which(names(datap) == reg.var))
+  
+  # type of industry
+  workt.var <- paste0("p",year,"0332")
+  cols <- append(cols, which(names(datap) == workt.var))
+  #p__0330 #($)CAV5H@O@Z8.)>wA>: 2000DZ5e(G%AX;j>w:P7y 8Bw)	
+  #p__0331 #($)CAV5H@O@Z8.)>wA>: 2007DZ5e(G%AX;j>w:P7y 9Bw)	
+  #p__0332 #($)CAV5H@O@Z8.)AwA>: 2000DZ5e(G%AXAw>w:P7y 5Bw)	
+  #p__0333 #($)CAV5H@O@Z8.)AwA>: 2007DZ5e(G%AXAw>w:P7y 6Bw)	
+  
+  # Size of company
+  works.var <- paste0("p",year,"0403")
+  cols <- append(cols, which(names(datap) == works.var))
+  
+  cols <- cols[-1]
+  return(cols)
+}
+
+data <- rep(NA, 20)
+
+#1~5 theres no some variables
+for (year in 6:20){
+  datap <- read.spss(paste0("/Users/jisulee/Documents/Master's thesis/KLIPS/klips",sprintf("%02d", year),"p.sav"), to.data.frame=TRUE)
+  cols <- cont.var(datap, year)
+
+# id sex age edu status "Years of education ends" wage
+  yeardata <- datap[,cols]
+  yeardata$year <- year
+  yeardata$first.gen <- yeardata$pid %in% first.gen[,1][first.gen[,2] == year]
+  yeardata$second.gen <- yeardata$pid %in% second.gen[,1][second.gen[,2] == year]
+  print(dim(yeardata))
+  colnames(yeardata) <- c("pid", "sex", "age", "birthyear", "edu", "status", "eduyear", "msalary", 
+                          "mself", "annual.pretax", "annual.posttax", "worky", "workm", "workd", 
+                          "regular", "type", "size", "year", "first.gen", "second.gen")
+  yeardata <- yeardata[(yeardata$first.gen | yeardata$second.gen),]
+  data <- rbind(data, yeardata)
+}
+
+data <- data[-1,]
+
+table(data$first.gen)
+#FALSE  TRUE 
+#879  1872 
+
+data <- data[(!is.na(data$annual.posttax)) | (!is.na(data$msalary)),] 
+#table(data$first.gen)
+#FALSE  TRUE 
+#392  1062 
+
+data[data[,] == -1] = NA # No reply
+
+data$sex <- data$sex - 1 # male 0 female 1
+data$sex <- data$sex == 0 # male 1 female 0
+data$regular <- data$regular - 1
+data$regular <- data$regular == 0 #regular 1 nonregular 0
+data$agesquare <- (data$age)^2
+data$birthyear <- data$birthyear + 7 
+
+data$edu[(data$status == 3) & !is.na(data$status)] <- data$edu[(data$status == 3) & !is.na(data$status)] - 1
+data$eduyear <- ifelse((data$edu == 1) | data$edu == 2, 0, 
+                       ifelse(data$edu == 3, 6, 
+                              ifelse(data$edu == 4, 9, 
+                                     ifelse(data$edu == 5, 12, 
+                                            ifelse(data$edu == 6, 14, 
+                                                   ifelse(data$edu == 7, 16, 
+                                                          ifelse(data$edu == 8, 18, 22
+                                                                 )))))))
+
+data$annual.posttax[(!is.na(data$msalary) & is.na(data$annual.posttax))] <- data$msalary[(!is.na(data$msalary) & is.na(data$annual.posttax))] * 12
+
+data$annual.log <- log(data$annual.posttax)
+data$annual.log[which(is.nan(data$annual.log))] = NA
+data$annual.log[which(data$annual.log==Inf)] = NA
+data$annual.log[which(data$annual.log==-Inf)] = NA
+data$serviceyear <- 1997 + year - data$worky #####
+data$workyear <- data$age - data$edu - 6
+
+data$type2 <- ifelse(substr(data$type,1,1) < 4, 1, 
+         ifelse((4 <= substr(data$type,1,1)) & (substr(data$type,1,1) < 6), 2, 3))
+data$type2 <- as.factor(data$type2)
+
+
+data$size[data$size == 11] = NA
+#data$size <- ifelse(data$size == 11, NA,
+#                    ifelse(data$size < 4, 1, 
+#                      ifelse(data$size > 7, 3, 2)))
+#data$size <- as.factor(data$size)
+
+#(1) 1-4
+#(2) 5-9
+#(3) 10-29
+#(4) 30-49
+#(5) 50-69
+#(6) 70-99
+#(7) 100-299
+#(8) 300-499
+#(9) 500-999
+#(10) more than 1000
+#(11) no idea
+
+data$worksquare <- (data$workyear)^2
+
+#1,2,3 professional and clerical positions
+#4,5 service and Sales Jobs
+#6,7,8,9 agriculture, fishing, machinery, simple labor
+
+write.csv(data, "/Users/jisulee/Documents/Master's thesis/KLIPS_cleaned_data.csv")
+
+```
+

@@ -1,0 +1,146 @@
+---
+title: "First_Generation_GOMS_2"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+```{r}
+library(MatchIt)
+library(optmatch)
+library(dplyr)
+library(ggplot2)
+```
+
+## Propensity Score Matching
+
+```{r}
+
+data <- read.csv("/Users/jisulee/Documents/Master's thesis/GOMS_cleaned_data.csv")
+
+```
+
+### To Exract variables affects both FG and wage
+
+```{r}
+
+psm.data <- data.frame(sex = data$sex, age = data$age, agesquare = data$agesquare, eduyear = data$eduyear, regular = data$regular, serviceyear = data$serviceyear, workyear = data$workyear, worksquare = data$worksquare, size = data$size, type = data$type, wage = data$logwage, firstgen = data$firstgen)
+
+psm.data$size <- as.factor(psm.data$size)
+psm.data$type <- as.factor(psm.data$type)
+
+dim(psm.data)
+
+```
+
+```{r}
+
+psm.data <- na.omit(psm.data)
+dim(psm.data)
+
+```
+
+
+### Set the PSM Variable with Logit Model
+
+```{r}
+m_ps <- glm(firstgen ~ age + agesquare + eduyear + regular + serviceyear + workyear + worksquare + size + type,
+            family = binomial(), data = psm.data)
+
+summary(m_ps)
+
+prs_df <- data.frame(pr_score = predict(m_ps, type = "response"),
+                     firstgen = m_ps$model$`firstgen`)
+
+```
+
+
+```{r pressure, echo=FALSE}
+
+labs <- paste("Type of College Students:", c("First-generation", "Second-generation"))
+prs_df %>%
+  mutate(firstgen = ifelse(firstgen == 1, labs[1], labs[2])) %>%
+  ggplot(aes(x = pr_score)) +
+  geom_histogram(color = "white") +
+  facet_wrap(~firstgen) +
+  xlab("Probability to be the First-generation") +
+  theme_bw()
+
+
+
+```
+
+
+##Overall
+
+```{r}
+opt.psm.out = matchit(firstgen ~ age + agesquare + eduyear + regular + serviceyear + workyear + worksquare + size + type,  
+                      method = "nearest", data = psm.data)
+```
+
+```{r}
+#summary(opt.psm.out)
+```
+
+```{r}
+opt.data = match.data(opt.psm.out)
+
+fgen <- opt.data[(opt.data$firstgen == 1),]
+sgen <- opt.data[(opt.data$firstgen == 0),]
+
+test1 <- t.test(fgen$wage, sgen$wage)
+
+```
+
+
+##Only Male 
+
+```{r}
+opt.psm.out = matchit(firstgen ~ age + agesquare + eduyear + regular + serviceyear + workyear + worksquare + size + type,  
+                      method = "nearest", data = psm.data[psm.data$sex == 1, ])
+```
+```{r}
+#summary(opt.psm.out)
+```
+
+```{r}
+
+opt.data <- match.data(opt.psm.out)
+
+fgen <- opt.data[(opt.data$firstgen == 1),]
+sgen <- opt.data[(opt.data$firstgen == 0),]
+
+test2 <- t.test(fgen$wage,sgen$wage)
+
+```
+
+
+##Only Female
+
+```{r}
+opt.psm.out = matchit(firstgen ~ age + agesquare + eduyear + regular + serviceyear + workyear + worksquare + size + type,  
+                      method = "nearest", data = psm.data[psm.data$sex == 0, ])
+
+#summary(opt.psm.out)
+```
+
+
+```{r}
+
+opt.data <- match.data(opt.psm.out)
+
+fgen <- opt.data[(opt.data$firstgen == 1),]
+sgen <- opt.data[(opt.data$firstgen == 0),]
+
+test3 <- t.test(fgen$wage,sgen$wage)
+test3
+```
+
+
+
+
+
+
+

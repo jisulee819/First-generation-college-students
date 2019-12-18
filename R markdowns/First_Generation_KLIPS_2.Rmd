@@ -1,0 +1,82 @@
+---
+title: "First_Generation_KLIPS_2"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+## Propensity Score Matching
+
+```{r}
+library(MatchIt)
+library(optmatch)
+library(dplyr)
+library(ggplot2)
+
+data <- read.csv("/Users/jisulee/Documents/Master's thesis/KLIPS_cleaned_data.csv")
+```
+
+### To Exract variables affects both FG and wage
+
+```{r}
+
+psm.data <- data.frame(sex = data$sex, age = data$age, agesquare = data$agesquare, eduyear = data$eduyear, status = data$status, regular = data$regular, serviceyear = data$serviceyear, workyear = data$workyear, worksquare = data$worksquare, size = data$size, type2 = data$type2 == 2, type3 = data$type2 == 3, year = data$year, wage = data$annual.log, first.gen = data$first.gen)
+
+psm.data$size2 = psm.data$size < 3
+#psm.data$size3 = 4 <= psm.data$size
+psm.data$size3 = (3 <= psm.data$size) & (psm.data$size < 7)
+psm.data$size4 = (7 <= psm.data$size) & (psm.data$size <= 8)
+psm.data$size5 = (9 <= psm.data$size)
+
+
+#(1) 1-4
+#(2) 5-9
+#(3) 10-29
+#(4) 30-49
+#(5) 50-69
+#(6) 70-99
+#(7) 100-299
+#(8) 300-499
+#(9) 500-999
+#(10) more than 1000
+#(11) no idea
+
+head(psm.data)
+
+```
+### Set the PSM Variable with Logit Model
+
+```{r}
+m_ps <- glm(first.gen ~ sex + age + agesquare + eduyear + workyear + 
+              regular + type2 + type3,
+            family = binomial(), data = psm.data)
+
+summary(m_ps)
+
+prs_df <- data.frame(pr_score = predict(m_ps, type = "response"),
+                     first.gen = m_ps$model$`first.gen`)
+
+```
+
+## Including Plots
+
+You can also embed plots, for example:
+
+```{r pressure, echo=FALSE}
+
+labs <- paste("Type of College Students:", c("First Generation", "Second Generation"))
+prs_df %>%
+  mutate(first.gen = ifelse(first.gen == 1, labs[1], labs[2])) %>%
+  ggplot(aes(x = pr_score)) +
+  geom_histogram(color = "white") +
+  facet_wrap(~first.gen) +
+  xlab("Probability of being the first generation") +
+  theme_bw()
+
+
+
+```
+
+Note that the `echo = FALSE` parameter was added to the code chunk to prevent printing of the R code that generated the plot.

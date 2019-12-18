@@ -1,0 +1,274 @@
+---
+title: "First_Generation_GOMS_1"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+library(prob)
+library(foreign)
+library(MatchIt)
+library(optmatch)
+library(dplyr)
+library(ggplot2)
+```
+
+## Data Cleaning of 2017GOMS
+
+```{r warning=FALSE}
+ datap <- readxl::read_excel("/Users/jisulee/Documents/Master's thesis/GOMS/2016GOMS1/GP16_2017.xlsx")
+                   #, to.data.frame=TRUE)
+```
+
+```{r}
+  
+work1 <- (datap$g161sq006==1)
+work2 <- (datap$g161sq006==2)
+work3 <- (datap$g161sq007==1)
+work4 <- (datap$g161sq008==1) & (0 < datap$g161sq009) & (datap$g161sq009  < 7)
+
+worker <- (work1 | work2 | work3 | work4 )
+worker[is.na(worker)] = 0
+datap$worker <- worker
+data <- datap[datap$worker == 1,]
+dim(data)
+
+```
+
+
+```{r}
+table(data$g161p026)
+table(data$g161p029)
+
+data$firstgen <- 
+  ifelse((data$g161p026 < 6) & (data$g161p029 < 6), 1, 0)
+         
+table(data$firstgen)
+### 4년제만
+```
+
+## Data Cleaning
+1) Extract columns 
+
+```{r }
+
+datac <- data.frame(
+  age = data$g161age,
+  sex = data$g161sex,
+  
+  
+  #Edu Year
+  school = data$g161school, #type of college 1:2~3년제 2,3:4년제
+  grad1.enter = data$g161g008, # 첫 대학원 입학 연
+  grad1.enter2 = data$g161g009, # 첫 대학원 입학 월
+  grad1.current = data$g161g019, # 재학
+  grad1.grad = data$g161g021, # 졸업
+  grad1.grad2 = data$g161g022, # 졸업
+  grad2 = data$g161g029, #둘째 대학원
+  grad2.enter = data$g161g027, # 입학
+  grad2.enter2 = data$g161g028, # 입학
+  grad2.current = data$g161g038, # 재학
+  grad2.grad = data$g161g040, # 졸업
+  grad2.grad2 = data$g161g041, # 졸업
+  
+  #Size
+  size.e = data$g161a010, #현 직장(일자리) 기업체 종사자 수
+  size.b = data$g161a011, #현 직장(일자리) 사업체 종사자 수 코드
+  
+  #Worktype
+  industry = data$g161a004_10, #현 직장(일자리) 산업 대분류 CODE_10차 분류
+  job = data$g161a008_2007, #현 직장(일자리) 직업 소분류 CODE_2007분류
+  
+  #Serviceyear
+  work.st.y = data$g161a001, # 현 직장 시작한 년 (참고: 조사날짜 2017년 9월 1일)
+  work.st.m = data$g161a002, # 월
+  
+  #Regular
+  regular = data$g161a059, # 현 직장 정규직 여부
+  
+  #Wage
+  wage = data$g161a122, #현 직장 근로소득
+  
+  #Workexp
+  exp1 = data$g161k081, #졸업 이후 일한 개월 1
+  exp2 = data$g161k090, # 2
+  exp3 = data$g161k097 # 3
+)
+```
+
+```{r}
+datac[1:10,]
+```
+
+
+2) reorganize columns
+
+Age square for Mincer equation
+```{r}
+
+datac$agesquare <- datac$age^2
+
+```
+
+
+Male coded as 1, female as 0
+```{r}
+datac$sex <- datac$sex - 1
+datac$sex <- datac$sex == 0
+
+```
+
+
+Education years has to includeyears in graduate school
+```{r}
+
+datac$under_edu <- ifelse(datac$school == 1, 2.5, 4) #2,3년제 비율: 교육통계서비스 (http://kess.kedi.re.kr)
+
+datac$grad1.grad[datac$grad1.current == 1] = 2017
+datac$grad1.grad2[datac$grad1.current == 1] = 9
+datac$grad2.grad[datac$grad2.current == 1] = 2017
+datac$grad2.grad2[datac$grad2.current == 1] = 9
+
+enter_datetimes = strptime(paste0(datac$grad1.enter2, ".01.", datac$grad1.enter), format = "%d.%m.%Y")
+grad_datetimes = strptime(paste0(datac$grad1.grad2, ".01.", datac$grad1.grad), format = "%d.%m.%Y")
+
+diff_in_days = difftime(grad_datetimes, enter_datetimes, units = "days") # days
+diff_in_years = as.double(diff_in_days)/365 
+diff_in_years[is.na(diff_in_years)] = 0
+
+enter_datetimes2 = strptime(paste0(datac$grad2.enter2, ".01.", datac$grad2.enter), format = "%d.%m.%Y")
+grad_datetimes2 = strptime(paste0(datac$grad2.grad2, ".01.", datac$grad2.grad), format = "%d.%m.%Y")
+
+diff_in_days2 = difftime(grad_datetimes2, enter_datetimes2, units = "days") # days
+diff_in_years2 = as.double(diff_in_days2)/365 
+diff_in_years2[is.na(diff_in_years2)] = 0
+diff_in_years2[diff_in_years2 < 0] = 0
+
+datac$grad_edu <- diff_in_years + diff_in_years2
+
+datac$eduyear <- datac$under_edu + datac$grad_edu + 12
+summary(datac$eduyear)
+  
+```
+
+```{r}
+
+datac$logwage <- log(datac$wage*12)
+datac$logwage[is.nan(datac$logwage)] = NA
+datac$logwage[datac$logwage == Inf] = NA
+datac$logwage[datac$logwage == -Inf] = NA
+
+```
+
+```{r}
+
+datac$regular[datac$regular == -1] = NA 
+datac$regular[datac$regular == 2] = 0
+table(datac$regular)
+
+```
+
+
+```{r}
+
+
+datac$exp1[is.na(datac$exp1)] = 0
+datac$exp3[is.na(datac$exp3)] = 0
+datac$exp2[is.na(datac$exp2)] = 0
+datac$exp1[datac$exp1 < 0] = 0
+datac$exp1[datac$exp1 < 0] = 0
+datac$exp1[datac$exp1 < 0] = 0
+
+datac$workyear <- datac$exp1 + datac$exp2 + datac$exp3
+summary(datac$workyear)
+
+datac$worksquare <- datac$workyear^2
+
+```
+
+```{r}
+
+start_datetimes = strptime(paste0(datac$work.st.m, ".01.", datac$work.st.y), format = "%d.%m.%Y")
+current_datetimes = strptime("09.01.2017", format = "%d.%m.%Y")
+
+diff_in_days = difftime(current_datetimes, start_datetimes, units = "days") # days
+diff_in_years = as.double(diff_in_days)/365 
+diff_in_years[is.na(diff_in_years)] = 0
+
+summary(diff_in_years)
+
+datac$serviceyear <- diff_in_years
+
+```
+
+
+```{r}
+
+table(datac$job)
+# 1 관리직 2경영회계 3금융보험 4교육,과학 5법률 6보건의료 20 정보통신
+# 7 사회복지 8 문화예술 10 영업 12 이용,숙박,여행 13 음식
+# 14 건설 15 기계 16 재료 17 화학 18 섬유 19 전기
+# 9운송 11경비 21식품가공 22생산단순 23농림어업 24군인
+#table(datac$job)
+
+job1 <- c(1,2,3,4,5,6,20)
+job2 <- c(7,8,10,12,13)
+job3 <- c(14,15,16,17,18,19)
+job4 <- c(9,11,21,22,23,24)
+
+datac$jobtype <- ifelse(datac$job %in% job1, 1, 
+                        ifelse(datac$job %in% job2, 2, 
+                               ifelse(datac$job %in% job3, 3, 4)))
+
+table(datac$jobtype)
+```
+
+
+```{r}
+      
+datac$size = datac$size.b
+datac$size[datac$size.b == -1] = datac$size.e[datac$size.b == -1]
+datac$size[datac$size == -1] = NA
+
+datac$size <- ifelse(datac$size < 3, 1, 
+                     ifelse(datac$size < 6, 2, 
+                            ifelse(datac$size < 8, 3, 4)))
+#1. 1~4명
+#2. 5~9명
+#3. 10~29명 
+#4. 30~49명 
+#5. 50~99명
+#6. 100~299명 
+#7. 300~499명 
+#8. 500~999명 
+#9. 1,000명 이상
+
+```
+
+
+```{r}
+
+colnames(datac)
+
+```
+
+```{r}
+
+dataf <- data.frame(
+  age = datac$age,
+  agesquare = datac$agesquare,
+  sex = datac$sex, 
+  eduyear = datac$eduyear, 
+  logwage = datac$logwage, 
+  workyear = datac$workyear,
+  worksquare = datac$worksquare, 
+  regular = datac$regular, 
+  type = datac$jobtype, 
+  serviceyear = datac$serviceyear, 
+  size = datac$size
+  )
+
+head(dataf)
+
+write.csv(dataf, "/Users/jisulee/Documents/Master's thesis/GOMS_cleaned_data.csv")
+```
+

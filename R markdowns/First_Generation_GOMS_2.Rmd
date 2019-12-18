@@ -1,0 +1,139 @@
+---
+title: "First_Generation_GOMS_2"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+```{r}
+library(stargazer)
+```
+
+
+## Simple OLS
+
+```{r}
+data <- read.csv("/Users/jisulee/Documents/Master's thesis/GOMS_cleaned_data.csv")
+```
+
+```{r}
+
+data$size <- as.factor(data$size)
+data$type <- as.factor(data$type)
+
+visu.data <- data.frame("SEX" = data$sex, "AGE" = data$age, "EDU" = data$eduyear, 
+                        "REGULAR" = data$regular, "SERVICE" = data$serviceyear, "WORK" = data$workyear, 
+                        "SIZE1" = data$size == 1, "SIZE2" = data$size == 2, "SIZE3" = data$size == 3, "SIZE4" = data$size == 4,
+                        "TYPE1" = data$type == 1, "type" = data$type == 2, "TYPE3" = data$type == 3, "TYPE4" = data$type == 4,
+                        "WAGE" = data$logwage, "FirstGen" = data$firstgen)
+visu.data2 <- visu.data[visu.data$FirstGen == 1,-ncol(visu.data)]
+visu.data3 <- visu.data[visu.data$FirstGen == 0,-ncol(visu.data)]
+
+stargazer(visu.data, summary.stat = c("n", "mean", "sd", "min", "max"), title="Descriptive Statistics")
+stargazer(visu.data2, summary.stat = c("n", "mean", "sd", "min", "max"), title="Descriptive Statistics (First Generation)")
+stargazer(visu.data3, summary.stat = c("n", "mean", "sd", "min", "max"), title="Descriptive Statistics (Second Generation)")
+
+```
+
+
+
+
+```{r}
+
+###Simple OLS
+
+linear.1 <- lm(data$logwage ~ data$sex + data$age + data$agesquare)
+linear.2 <- lm(data$logwage ~ data$sex + data$age + data$agesquare + data$eduyear + data$regular + data$serviceyear + data$firstgen)
+linear.3 <- lm(data$logwage ~ data$sex + data$age + data$agesquare + data$eduyear + data$regular + data$serviceyear + data$workyear + data$worksquare + data$size + data$firstgen)
+linear.4 <- lm(data$logwage ~ data$sex + data$age + data$agesquare + data$eduyear + data$regular + data$serviceyear + data$workyear + data$worksquare + data$size + data$type + data$firstgen)
+
+summary(linear.4)
+
+```
+
+
+```{r}
+
+stargazer(linear.2, linear.3, linear.4, 
+          covariate.labels = c("SEX", "AGE", "AGE2", "EDU", "REGULAR", "SERVEYEAR", "WORKEXP", "WORKEXP2", "SIZE2", "SIZE3", "SIZE4", "WORKtype", "WORKTYPE3", "WORKTYPE4", "FIRSTGEN"),
+          dep.var.labels   = "Annual Income (Log)")
+
+```
+
+
+##Mincer Equation
+
+```{r}
+
+mincer.1 <- lm(logwage ~ age + agesquare + eduyear + workyear + worksquare + firstgen, data=data)
+summary(mincer.1)
+mincer.2 <- lm(logwage ~ age + agesquare + eduyear + workyear + worksquare + firstgen, data=data[data$sex == 1,])
+summary(mincer.2)
+mincer.3 <- lm(logwage ~ age + agesquare + eduyear + workyear + worksquare + firstgen, data=data[data$sex == 0,])
+summary(mincer.3)
+
+```
+
+```{r}
+stargazer(mincer.1, mincer.2, mincer.3, 
+          covariate.labels = c("AGE", "AGE2", "EDU", "WORKEXP", "WORKEXP2", "FIRSTGEN"),
+          dep.var.labels   = "Annual Income (Log)")
+```
+
+
+## Logit Model Estimation (to get psm variable)
+```{r}
+
+logit.data <- data
+linear.2 <- glm(firstgen ~ age + agesquare + eduyear + regular + serviceyear, data = logit.data, family = binomial(link = "logit"))
+linear.3 <- glm(firstgen ~ age + agesquare + eduyear + regular + serviceyear + workyear + worksquare + size, data = logit.data, family = binomial(link = "logit"))
+linear.4 <- glm(firstgen ~ age + agesquare + eduyear + regular + serviceyear + workyear + worksquare + size + type, data = logit.data, family = binomial(link = "logit"))
+
+logit.data <- data[data$sex == 1,]
+linear.21 <- glm(firstgen ~ age + agesquare + eduyear + regular + serviceyear, data = logit.data, family = binomial(link = "logit"))
+linear.31 <- glm(firstgen ~ age + agesquare + eduyear + regular + serviceyear + workyear + worksquare + size, data = logit.data, family = binomial(link = "logit"))
+linear.41 <- glm(firstgen ~ age + agesquare + eduyear + regular + serviceyear + workyear + worksquare + size + type, data = logit.data, family = binomial(link = "logit"))
+
+logit.data <- data[data$sex == 0,]
+linear.20 <- glm(firstgen ~ age + agesquare + eduyear + regular + serviceyear, data = logit.data, family = binomial(link = "logit"))
+linear.30 <- glm(firstgen ~ age + agesquare + eduyear + regular + serviceyear + workyear + worksquare + size, data = logit.data, family = binomial(link = "logit"))
+linear.40 <- glm(firstgen ~ age + agesquare + eduyear + regular + serviceyear + workyear + worksquare + size + type, data = logit.data, family = binomial(link = "logit"))
+
+
+```
+
+
+
+
+```{r}
+summary(linear.4)
+```
+
+
+```{r}
+
+stargazer(linear.2, linear.3, linear.4,  
+          covariate.labels = c("AGE", "AGE2", "EDU", "REGULAR", "SERVEYEAR", "WORKEXP", "WORKEXP2", "SIZE2", "SIZE3", "SIZE4", "WORKTYPE2", "WORKTYPE3", "WORKTYPE4", "Constants"),
+          dep.var.labels   = "First Generation", title="Logit Model Estimation (Overall)")
+
+stargazer(linear.21, linear.31, linear.41,  
+          covariate.labels = c("AGE", "AGE2", "EDU", "REGULAR", "SERVEYEAR", "WORKEXP", "WORKEXP2", "SIZE2", "SIZE3", "SIZE4", "WORKTYPE2", "WORKTYPE3", "WORKTYPE4", "Constants"),
+          dep.var.labels   = "First Generation", title="Logit Model Estimation (Male)")
+
+stargazer(linear.20, linear.30, linear.40,  
+          covariate.labels = c("AGE", "AGE2", "EDU", "REGULAR", "SERVEYEAR", "WORKEXP", "WORKEXP2", "SIZE2", "SIZE3", "SIZE4", "WORKTYPE2", "WORKTYPE3", "WORKTYPE4", "Constants"),
+          dep.var.labels   = "First Generation", title="Logit Model Estimation (Female)")
+
+
+```
+
+
+```{r}
+stargazer(linear.4, linear.41, linear.40,  
+          covariate.labels = c("AGE", "AGE2", "EDU", "REGULAR", "SERVEYEAR", "WORKEXP", "WORKEXP2", "SIZE2", "SIZE3", "SIZE4", "WORKTYPE2", "WORKTYPE3", "WORKTYPE4"),
+          dep.var.labels   = "First Generation", title="Logit Model Estimation")
+
+```
+
